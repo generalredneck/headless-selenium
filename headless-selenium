@@ -1,0 +1,142 @@
+#!/bin/bash
+SELENIUM_DIR='/usr/lib/headless-selenium'
+# The user will need to set this variable
+# SELENIUM_PROFILE_DIR=$SELENIUM_DIR/profiles/firefox/selenium
+SELENIUM_JAR=$SELENIUM_DIR/selenium-server-standalone-2.24.1.jar
+SELENIUM_LOG_DIR='/var/log/selenium'
+XVFB_PID_FILE='/tmp/Xvfb.pid'
+SELENIUM_PID_FILE='/tmp/selenium.pid'
+DISPLAY=:42
+if [ "$XVFB_SCREEN_GEOMETY" = "" ]
+then
+  XVFB_SCREEN_GEOMETRY=1024x768x24
+fi
+case "${1:-''}" in
+  'start')
+# Check to see if Stuff is already running.
+    if $0 status > /dev/null
+    then
+      echo "Headless Selenium is already running."
+      exit 1
+    fi
+
+    if [ ! -d $SELENIUM_LOG_DIR ]
+    then
+      mkdir $SELENIUM_LOG_DIR
+    fi
+    echo "Starting Xvfb..."
+    Xvfb $DISPLAY -screen 0 $XVFB_SCREEN_GEOMETRY >> $SELENIUM_LOG_DIR/Xvfb-output.log 2>> $SELENIUM_LOG_DIR/Xvfb-error.log & echo $! > $XVFB_PID_FILE
+    error=$?
+    if test $error -gt 0
+    then
+      echo "${bon}Error $error! Couldn't start Xvfb!${boff}"
+      exit 2
+    fi
+
+# Preparing for the ability to load configurable Profile Directories.
+    if [ "$SELENIUM_PROFILE_DIR" = "" ]
+    then
+      SELENIUM_PROFILE_DIR=$SELENIUM_DIR/profiles/firefox/selenium
+      if test -d $SELENIUM_PROFILE_DIR
+      then
+        SELENIUM_OPTIONS="-jar $SELENIUM_JAR -port 4444 -firefoxProfileTemplate $SELENIUM_PROFILE_DIR"
+      else
+        echo "${bon}Warning:${boff}No Profile in ${bon}$SELENIUM_PROFILE_DIR${boff} detected."
+        echo "A default firefox profile will be used and may produce unexpected results."
+        SELENIUM_OPTIONS="-jar $SELENIUM_JAR -port 4444"
+      fi
+    else
+      SELENIUM_OPTIONS="-jar $SELENIUM_JAR -port 4444 -firefoxProfileTemplate $SELENIUM_PROFILE_DIR"
+    fi
+    (DISPLAY=$DISPLAY java $SELENIUM_OPTIONS 2>>$SELENIUM_LOG_DIR/selenium-error.log | tee /tmp/selenium-session-output >> $SELENIUM_LOG_DIR/selenium-output.log) & echo $! > $SELENIUM_PID_FILE
+
+    error=$?
+    if test $error -gt 0
+    then
+      echo "${bon}Error $error! Couldn't start Selenium!${boff}"
+      exit 3
+    fi
+
+    num=0
+    if test -e /tmp/selenium-session-output
+    then
+      echo -n "Starting Selenium"
+
+# Wait for the server to finish starting up
+      while test $num -gt 0 ; do
+        sleep 3
+        echo -n "."
+
+        if grep -q "Started SocketListener" /tmp/selenium-session-output
+        then
+          num=1
+        fi
+
+        if grep -q "Failed to start" /tmp/selenium-session-output
+        then
+          num=2
+        fi
+      done
+      echo ""
+    fi
+
+ # If we come out of the loop with 2... there's a problem.
+    if test $num -eq 2
+    then
+      echo "${bon}Error $error! Couldn't start Selenium!${boff}"
+      sleep 1
+      $0 stop
+      exit 4
+    fi
+  ;;
+  'stop')
+    if $0 status > /dev/null
+    then
+      echo "Stopping Headless Selenium..."
+      SELENIUM_PID=`cat $SELENIUM_PID_FILE`
+      XVFB_PID=`cat $XVFB_PID_FILE`
+      error=0
+      if pkill -9 -P $SELENIUM_PID > /dev/null  && kill -3 $XVFB_PID > /dev/null
+        then
+          sleep 2
+        else
+          echo "Selenium could not be stopped... There may be orphaned processes lying around."
+          error=5;
+      fi
+      test -f $XVFB_PID_FILE && rm -f $XVFB_PID_FILE
+      test -f $SELENIUM_PID_FILE && rm -f $SELENIUM_PID_FILE
+      if test $error -gt 0
+      then
+        exit $error
+      fi
+    else
+      echo "Headless Selenium is not running."
+      exit 6
+    fi
+  ;;
+  'restart')
+    if $0 status > /dev/null
+    then
+      $0 stop
+      sleep 1
+      echo "Reload Headless Selenium..."
+      $0 start
+    else
+      echo "Headless Selenium is stopped."
+    fi
+  ;;
+  'status')
+    if test -f $SELENIUM_PID_FILE && test -f $XVFB_PID_FILE && ps -A | grep `cat $SELENIUM_PID_FILE` > /dev/null && ps -A | grep `cat $XVFB_PID_FILE` > /dev/null
+    then
+      echo "Headless Selenium is running."
+      exit 0
+    else
+      echo "Headless Selenium is stopped."
+      exit 1
+    fi
+  ;;
+  *)      # no parameter specified
+    echo "Usage: $SELF start|stop|restart|status"
+    exit 1
+  ;;
+esac
