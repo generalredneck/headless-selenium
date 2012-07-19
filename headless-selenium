@@ -48,6 +48,11 @@ case "${1:-''}" in
     else
       SELENIUM_OPTIONS="-jar $SELENIUM_JAR -port 4444 -firefoxProfileTemplate $SELENIUM_PROFILE_DIR"
     fi
+
+# Just in case this file is still hanging around.
+    rm /tmp/selenium-session-output
+
+# The magic line that starts Selenium
     (DISPLAY=$DISPLAY java $SELENIUM_OPTIONS 2>>$SELENIUM_LOG_DIR/selenium-error.log | tee /tmp/selenium-session-output >> $SELENIUM_LOG_DIR/selenium-output.log) & echo $! > $SELENIUM_PID_FILE
 
     error=$?
@@ -58,26 +63,35 @@ case "${1:-''}" in
     fi
 
     num=0
+
+# Had to add time here so that the output file would have time to be created
+    sleep 2
+
     if test -e /tmp/selenium-session-output
     then
       echo -n "Starting Selenium"
 
 # Wait for the server to finish starting up
-      while test $num -gt 0 ; do
+      seconds=0
+      while test $num -eq 0 || test $seconds -ge 300 ; do
         sleep 3
         echo -n "."
 
-        if grep -q "Started SocketListener" /tmp/selenium-session-output
+        if netstat -l | grep ":4444 " | grep -q -i listen
         then
           num=1
         fi
 
-        if grep -q "Failed to start" /tmp/selenium-session-output
+        if egrep -q -i "(fail|error)" /tmp/selenium-session-output
         then
           num=2
         fi
+        seconds=`expr $seconds + 3`
       done
       echo ""
+    else
+      echo "selenium-session-output doesn't exist"
+      exit 8
     fi
 
  # If we come out of the loop with 2... there's a problem.
@@ -96,7 +110,7 @@ case "${1:-''}" in
       SELENIUM_PID=`cat $SELENIUM_PID_FILE`
       XVFB_PID=`cat $XVFB_PID_FILE`
       error=0
-      if pkill -9 -P $SELENIUM_PID > /dev/null  && kill -3 $XVFB_PID > /dev/null
+      if pkill -9 -P $SELENIUM_PID > /dev/null && kill -3 $XVFB_PID > /dev/null
         then
           sleep 2
         else
