@@ -7,12 +7,19 @@ SELENIUM_LOG_DIR='/var/log/selenium'
 XVFB_PID_FILE='/tmp/Xvfb.pid'
 SELENIUM_PID_FILE='/tmp/selenium.pid'
 DISPLAY=:42
+JAVA=`which java`
 if [ "$XVFB_SCREEN_GEOMETY" = "" ]
 then
   XVFB_SCREEN_GEOMETRY=1024x768x24
 fi
 case "${1:-''}" in
   'start')
+# Check for java
+    if [ "$JAVA" = "" ]
+    then
+      echo "${bon}Error Headless Selenium requires java to run!${boff}"
+      exit 999
+    fi
 # Check to see if Stuff is already running.
     if $0 status > /dev/null
     then
