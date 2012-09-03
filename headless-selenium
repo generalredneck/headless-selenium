@@ -36,14 +36,6 @@ then
   fi
 fi
 
-echo $SELENIUM_JAR
-echo $SELENIUM_OPTIONS
-echo $JAVA
-echo $XVFB
-echo $DISPLAY
-echo $XVFB_SCREEN_GEOMETRY
-echo $TIME_OUT
-
 SELENIUM_LOG_DIR='/var/log/selenium'
 XVFB_PID_FILE='/tmp/Xvfb.pid'
 SELENIUM_PID_FILE='/tmp/selenium.pid'

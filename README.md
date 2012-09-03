@@ -24,18 +24,29 @@ Make the directory `/usr/lib/headless-selenium`.
 Download Selenium Server and place it in `/usr/lib/headless-selenium`.
 
 ### Step 4
-Edit the variable `SELENIUM_JAR` in the service file with the name of the selenium server you downloaded. (At the time I wrote the service the latest was 2.24.1)
+Make the directory `/etc/headless-selenium`.
 
 ### Step 5
-Create the directores up to `/usr/lib/headless-selenium/profiles/firefox`
+Place the file `selenium.conf` in `/etc/headless-selenium`.
 
 ### Step 6
-Create a selenium profile using firefox. There are several tutorials out there (particularly handy one). I've taken the liberty of creating a default one that you can do what you want to with.
+Uncomment and edit the variable `SELENIUM_JAR` in `/etc/headless-selenium/selenium.conf` with the name of the selenium server you downloaded. (At the time I wrote the service the latest was 2.24.1)
 
 ### Step 7
-Put that Profile in `/usr/lib/headless-selenium/profiles/firefox/selenium`.
+Create the directores up to `/usr/lib/headless-selenium/profiles/firefox`
 
 ### Step 8
+Create a selenium profile using firefox. There are several tutorials out there (particularly handy one). I've taken the liberty of creating a default one that you can do what you want to with.
+
+### Step 9
+Put that Profile in `/usr/lib/headless-selenium/profiles/firefox/selenium`.
+
+### Step 10 (optional)
+Uncomment the variable `SELENIUM_PROFILE_DIR` in `/etc/headless-selenium/selenium.conf`
+
+_Note: The default is actually `/usr/lib/headless-selenium/profiles/firefox/selenium` so you won't need to change it, however, you could save doing step 9 by changing this variable to `/home/YOURUSERNAME/.mozilla/firefox/YOURSELENIUMDIR`_
+
+### Step 11
 Start the service! `sudo /etc/init.d/headless-selenium start`
 
 ## Usage
