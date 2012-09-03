@@ -1,24 +1,72 @@
 #!/bin/bash
-SELENIUM_DIR='/usr/lib/headless-selenium'
-# The user will need to set this variable
-# SELENIUM_PROFILE_DIR=$SELENIUM_DIR/profiles/firefox/selenium
-SELENIUM_JAR=$SELENIUM_DIR/selenium-server-standalone-2.24.1.jar
+
+HEADLESS_SELENIUM_CONFIG='/etc/headless-selenium/selenium.conf'
+HEADLESS_SELENIUM_DIR='/usr/lib/headless-selenium'
+
+#Configurable Variables.
+SELENIUM_JAR=$HEADLESS_SELENIUM_DIR/selenium-server-standalone-2.24.1.jar
+SELENIUM_OPTIONS=''
+SELENIUM_PORT=4444
+SELENIUM_PROFILE_DIR=$HEADLESS_SELENIUM_DIR/profiles/firefox/selenium
+JAVA=`which java`
+XVFB=`which Xvfb`
+DISPLAY=:42
+XVFB_SCREEN_GEOMETRY=1024x768x24
+TIME_OUT=300
+
+if [ -f $HEADLESS_SELENIUM_CONFIG ]
+then
+  source $HEADLESS_SELENIUM_CONFIG
+fi
+
+# If custom options aren't given.
+if [ "$SELENIUM_OPTIONS" == "" ]
+then
+# Preparing for the ability to load configurable Profile Directories.
+  if [[ "$SELENIUM_PROFILE_DIR" != "" && -d $SELENIUM_PROFILE_DIR ]]
+  then
+    SELENIUM_OPTIONS="$SELENIUM_OPTIONS -firefoxProfileTemplate $SELENIUM_PROFILE_DIR"
+  else
+    echo "${bon}Warning:${boff}No Profile in ${bon}$SELENIUM_PROFILE_DIR${boff} detected."
+    echo "A default firefox profile will be used and may produce unexpected results."
+  fi
+  if [ "$SELENIUM_PORT" != "" ]
+  then
+    SELENIUM_OPTIONS="$SELENIUM_OPTIONS -port $SELENIUM_PORT"
+  fi
+fi
+
+echo $SELENIUM_JAR
+echo $SELENIUM_OPTIONS
+echo $JAVA
+echo $XVFB
+echo $DISPLAY
+echo $XVFB_SCREEN_GEOMETRY
+echo $TIME_OUT
+
 SELENIUM_LOG_DIR='/var/log/selenium'
 XVFB_PID_FILE='/tmp/Xvfb.pid'
 SELENIUM_PID_FILE='/tmp/selenium.pid'
-DISPLAY=:42
-JAVA=`which java`
-if [ "$XVFB_SCREEN_GEOMETY" = "" ]
-then
-  XVFB_SCREEN_GEOMETRY=1024x768x24
-fi
+
 case "${1:-''}" in
   'start')
 # Check for java
-    if [ "$JAVA" = "" ]
+    if [[ "$JAVA" = ""  ||  ! -x $JAVA ]]
     then
       echo "${bon}Error Headless Selenium requires java to run!${boff}"
       exit 999
+    fi
+# Check for Xvfb
+    if [[ "$XVFB" = ""  ||  ! -x $XVFB ]]
+    then
+      echo "${bon}Error Headless Selenium requires Xvfb to run!${boff}"
+      exit 998
+    fi
+# Check for Server Jar
+    if [ ! -e $SELENIUM_JAR ]
+    then
+      echo "${bon}Error Headless Selenium requires a selenium server jar file to run!${boff}"
+      exit 997
     fi
 # Check to see if Stuff is already running.
     if $0 status > /dev/null
@@ -32,38 +80,23 @@ case "${1:-''}" in
       mkdir $SELENIUM_LOG_DIR
     fi
     echo "Starting Xvfb..."
-    Xvfb $DISPLAY -screen 0 $XVFB_SCREEN_GEOMETRY >> $SELENIUM_LOG_DIR/Xvfb-output.log 2>> $SELENIUM_LOG_DIR/Xvfb-error.log & echo $! > $XVFB_PID_FILE
+    $XVFB $DISPLAY -screen 0 $XVFB_SCREEN_GEOMETRY >> $SELENIUM_LOG_DIR/Xvfb-output.log 2>> $SELENIUM_LOG_DIR/Xvfb-error.log & echo $! > $XVFB_PID_FILE
     error=$?
-    if test $error -gt 0
+    if [ $error -gt 0 ]
     then
       echo "${bon}Error $error! Couldn't start Xvfb!${boff}"
       exit 2
     fi
 
-# Preparing for the ability to load configurable Profile Directories.
-    if [ "$SELENIUM_PROFILE_DIR" = "" ]
-    then
-      SELENIUM_PROFILE_DIR=$SELENIUM_DIR/profiles/firefox/selenium
-      if test -d $SELENIUM_PROFILE_DIR
-      then
-        SELENIUM_OPTIONS="-jar $SELENIUM_JAR -port 4444 -firefoxProfileTemplate $SELENIUM_PROFILE_DIR"
-      else
-        echo "${bon}Warning:${boff}No Profile in ${bon}$SELENIUM_PROFILE_DIR${boff} detected."
-        echo "A default firefox profile will be used and may produce unexpected results."
-        SELENIUM_OPTIONS="-jar $SELENIUM_JAR -port 4444"
-      fi
-    else
-      SELENIUM_OPTIONS="-jar $SELENIUM_JAR -port 4444 -firefoxProfileTemplate $SELENIUM_PROFILE_DIR"
-    fi
 
 # Just in case this file is still hanging around.
     rm /tmp/selenium-session-output
 
 # The magic line that starts Selenium
-    (DISPLAY=$DISPLAY java $SELENIUM_OPTIONS 2>>$SELENIUM_LOG_DIR/selenium-error.log | tee /tmp/selenium-session-output >> $SELENIUM_LOG_DIR/selenium-output.log) & echo $! > $SELENIUM_PID_FILE
+    (DISPLAY=$DISPLAY $JAVA -jar $SELENIUM_JAR $SELENIUM_OPTIONS 2>>$SELENIUM_LOG_DIR/selenium-error.log | tee /tmp/selenium-session-output >> $SELENIUM_LOG_DIR/selenium-output.log) & echo $! > $SELENIUM_PID_FILE
 
     error=$?
-    if test $error -gt 0
+    if [ $error -gt 0 ]
     then
       echo "${bon}Error $error! Couldn't start Selenium!${boff}"
       exit 3
@@ -74,17 +107,17 @@ case "${1:-''}" in
 # Had to add time here so that the output file would have time to be created
     sleep 2
 
-    if test -e /tmp/selenium-session-output
+    if [ -e /tmp/selenium-session-output ]
     then
       echo -n "Starting Selenium"
 
 # Wait for the server to finish starting up
       seconds=0
-      while test $num -eq 0 || test $seconds -ge 300 ; do
+      while [[ $num -eq 0 && $seconds -le $TIME_OUT ]]; do
         sleep 3
         echo -n "."
 
-        if netstat -l | grep ":4444 " | grep -q -i listen
+        if netstat -l | grep ":$SELENIUM_PORT " | grep -q -i listen
         then
           num=1
         fi
@@ -92,6 +125,11 @@ case "${1:-''}" in
         if egrep -q -i "(fail|error)" /tmp/selenium-session-output
         then
           num=2
+        fi
+
+        if [ "`cat /tmp/selenium-session-output`" = "" ]
+        then
+          num=3
         fi
         seconds=`expr $seconds + 3`
       done
@@ -102,7 +140,7 @@ case "${1:-''}" in
     fi
 
  # If we come out of the loop with 2... there's a problem.
-    if test $num -eq 2
+    if [[ $num -eq 2 || $num -eq 3 ]]
     then
       echo "${bon}Error $error! Couldn't start Selenium!${boff}"
       sleep 1
@@ -126,7 +164,7 @@ case "${1:-''}" in
       fi
       test -f $XVFB_PID_FILE && rm -f $XVFB_PID_FILE
       test -f $SELENIUM_PID_FILE && rm -f $SELENIUM_PID_FILE
-      if test $error -gt 0
+      if [ $error -gt 0 ]
       then
         exit $error
       fi
