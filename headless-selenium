@@ -132,7 +132,7 @@ case "${1:-''}" in
     fi
 
  # If we come out of the loop with 2... there's a problem.
-    if [[ $num -eq 2 || $num -eq 3 ]]
+    if [[ $num -eq 2 || $num -eq 1 ]]
     then
       echo "${bon}Error $error! Couldn't start Selenium!${boff}"
       sleep 1
